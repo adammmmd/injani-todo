@@ -116,12 +116,6 @@ JWT validation in FastAPI, we implemented a JWT exchange flow:
 - ❌ Token cannot be revoked before 1 hour expiry
 - ❌ Initial JWT exchange requires call to Next.js + FastAPI
 
-**For production at scale:**
-- Add refresh token rotation with Redis blacklist
-- Switch to asymmetric keys (RS256) — FastAPI only needs public key
-- PostgreSQL instead of SQLite
-- Redis session cache to eliminate Better Auth DB lookups
-
 ## Passkey Note
 
 Better Auth v1.6.11 does not include a passkey plugin. WebAuthn implemented
@@ -129,12 +123,6 @@ manually using `@simplewebauthn/server` (backend) and `@simplewebauthn/browser` 
 
 Key insight: Better Auth signs session cookies using HMAC-SHA256 with `btoa()` encoding
 and `encodeURIComponent()`. Session tokens use alphanumeric 32-char format, not UUID.
-
-## Brevo Email
-
-Sender domain: configured via Brevo free tier for transactional email.
-Note: Google OAuth flow does not require transactional email. Brevo is configured
-for future magic link / email verification features.
 
 ## Deployment Note
 
