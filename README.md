@@ -4,11 +4,11 @@ Full-stack todo application built for Injani Systems technical assignment.
 
 ## Project Structure
 
-├── frontend/     # Next.js 15 + Better Auth
-├── backend/         # FastAPI + SQLAlchemy
-├── docker-compose.yml
-├── .gitignore
-└── .env.example
+├── frontend/     # Next.js 15 + Better Auth<br>
+├── backend/         # FastAPI + SQLAlchemy<br>
+├── docker-compose.yml<br>
+├── .gitignore<br>
+└── .env.example<br>
 
 ## Quick Start
 
@@ -43,17 +43,17 @@ NEXTJS_URL=http://frontend:3000       # Docker
 ## Architecture
 Browser
 │
-├── /api/auth/*  →  Next.js (Better Auth)  →  auth.db
+├── /api/auth/*  →  Next.js (Better Auth)  →  auth.db<br>
 │
-├── /api/passkey/*  →  Next.js (WebAuthn)  →  auth.db
+├── /api/passkey/*  →  Next.js (WebAuthn)  →  auth.db<br>
 │
-└── /api/todos  →  Next.js proxy
+└── /api/todos  →  Next.js proxy<br>
 │
-└── Bearer token  →  FastAPI :8000
+└── Bearer token  →  FastAPI :8000<br>
 │
-├── sign token (HMAC-SHA256)
-├── GET /api/auth/get-session
-└── todos.db
+├── sign token (HMAC-SHA256)<br>
+├── GET /api/auth/get-session<br>
+└── todos.db<br>
 
 ## JWT Integration Decision
 
