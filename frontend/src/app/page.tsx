@@ -1,10 +1,7 @@
 "use client";
 import { signIn, signOut, useSession } from "@/lib/auth-client";
-import {
-  startRegistration,
-  startAuthentication,
-} from "@simplewebauthn/browser";
-import { useState, useEffect } from "react";
+import { startRegistration, startAuthentication } from "@simplewebauthn/browser";
+import { useState, useEffect, useRef } from "react";
 import {
   Header,
   AddTodoForm,
@@ -20,6 +17,27 @@ type Todo = {
   user_id: string;
 };
 
+// JWT cache di luar component — persist selama session browser
+let cachedJWT: { token: string; exp: number } | null = null;
+
+async function getJWT(): Promise<string> {
+  // reuse kalau masih valid lebih dari 60 detik
+  if (cachedJWT && cachedJWT.exp > Date.now() / 1000 + 60) {
+    return cachedJWT.token;
+  }
+
+  const res = await fetch("/api/auth/token");
+  if (!res.ok) throw new Error("Unauthorized");
+
+  const { token } = await res.json();
+
+  // decode exp dari JWT payload (bagian tengah base64)
+  const payload = JSON.parse(atob(token.split(".")[1]));
+  cachedJWT = { token, exp: payload.exp };
+
+  return token;
+}
+
 export default function Home() {
   const { data: session, isPending } = useSession();
   const [todos, setTodos] = useState<Todo[]>([]);
@@ -33,14 +51,18 @@ export default function Home() {
     setTodosLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/todos");
+      const token = await getJWT();
+      const res = await fetch("/api/todos", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       if (res.status === 401) {
+        cachedJWT = null;
         await signOut();
         return;
       }
       if (!res.ok) throw new Error("Failed to fetch todos");
       setTodos(await res.json());
-    } catch (e) {
+    } catch {
       setError("Failed to load todos. Please try again.");
     } finally {
       setTodosLoading(false);
@@ -52,15 +74,19 @@ export default function Home() {
     setLoading(true);
     setError(null);
     try {
+      const token = await getJWT();
       const res = await fetch("/api/todos", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
         body: JSON.stringify({ title: newTodo }),
       });
       if (!res.ok) throw new Error("Failed to add todo");
       setNewTodo("");
       await fetchTodos();
-    } catch (e) {
+    } catch {
       setError("Failed to add todo. Please try again.");
     } finally {
       setLoading(false);
@@ -70,10 +96,14 @@ export default function Home() {
   async function completeTodo(id: number) {
     setError(null);
     try {
-      const res = await fetch(`/api/todos/${id}/complete`, { method: "PATCH" });
+      const token = await getJWT();
+      const res = await fetch(`/api/todos/${id}/complete`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}` },
+      });
       if (!res.ok) throw new Error("Failed to complete todo");
       await fetchTodos();
-    } catch (e) {
+    } catch {
       setError("Failed to update todo. Please try again.");
     }
   }
@@ -81,9 +111,7 @@ export default function Home() {
   async function tryPasskeyLogin() {
     setPasskeyLoading(true);
     try {
-      const optRes = await fetch("/api/passkey/login-options", {
-        method: "POST",
-      });
+      const optRes = await fetch("/api/passkey/login-options", { method: "POST" });
       const options = await optRes.json();
       const credential = await startAuthentication({
         optionsJSON: options,
@@ -96,7 +124,7 @@ export default function Home() {
       });
       const result = await verRes.json();
       if (result.success) window.location.replace("/");
-    } catch (e) {
+    } catch {
       // silent fail
     } finally {
       setPasskeyLoading(false);
@@ -108,7 +136,7 @@ export default function Home() {
     if (hasPasskey) return;
 
     const confirm = window.confirm(
-      "Would you like to register a Passkey for faster login next time?",
+      "Would you like to register a Passkey for faster login next time?"
     );
     if (!confirm) {
       localStorage.setItem("passkey_registered", "skipped");
@@ -116,9 +144,7 @@ export default function Home() {
     }
 
     try {
-      const optRes = await fetch("/api/passkey/register-options", {
-        method: "POST",
-      });
+      const optRes = await fetch("/api/passkey/register-options", { method: "POST" });
       const options = await optRes.json();
       const credential = await startRegistration({ optionsJSON: options });
       const verRes = await fetch("/api/passkey/register-verify", {
@@ -131,7 +157,7 @@ export default function Home() {
         localStorage.setItem("passkey_registered", "true");
         alert("Passkey registered! You can now sign in faster next time.");
       }
-    } catch (e) {
+    } catch {
       // user cancel
     }
   }
@@ -166,23 +192,19 @@ export default function Home() {
             email={session.user.email || ""}
             onSignOut={() => signOut()}
           />
-
           {error && (
             <div className="mt-6">
               <ErrorMessage message={error} onDismiss={() => setError(null)} />
             </div>
           )}
-
           <div className="mt-8 flex flex-col gap-6">
             <h2 className="text-lg font-semibold text-gray-900">My Todos</h2>
-
             <AddTodoForm
               value={newTodo}
               onChange={setNewTodo}
               onSubmit={addTodo}
               loading={loading}
             />
-
             <TodoList
               todos={todos}
               loading={todosLoading}
@@ -197,9 +219,7 @@ export default function Home() {
   return (
     <div className="min-h-screen flex items-center justify-center px-4">
       <LoginForm
-        onGoogleSignIn={() =>
-          signIn.social({ provider: "google", callbackURL: "/" })
-        }
+        onGoogleSignIn={() => signIn.social({ provider: "google", callbackURL: "/" })}
         passkeyLoading={passkeyLoading}
       />
     </div>

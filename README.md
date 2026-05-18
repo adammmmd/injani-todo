@@ -4,11 +4,14 @@ Full-stack todo application built for Injani Systems technical assignment.
 
 ## Project Structure
 
-├── frontend/     # Next.js 15 + Better Auth<br>
-├── backend/         # FastAPI + SQLAlchemy<br>
-├── docker-compose.yml<br>
-├── .gitignore<br>
-└── .env.example<br>
+```
+INJANI/
+├── frontend-v2/        # Next.js 15 + Better Auth
+├── backend/            # FastAPI + SQLAlchemy
+├── docker-compose.yml
+├── .env.example
+└── .gitignore
+```
 
 ## Quick Start
 
@@ -31,73 +34,117 @@ Run frontend and backend separately — see their respective READMEs.
 Create `.env` in this folder:
 
 ```env
+# App URLs
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 BETTER_AUTH_URL=http://localhost:3000
+
+# Auth secret — must be same in frontend and backend
 BETTER_AUTH_SECRET=your-secret-min-32-chars
+
+# Google OAuth
 GOOGLE_CLIENT_ID=your-google-client-id
 GOOGLE_CLIENT_SECRET=your-google-client-secret
-BACKEND_URL=http://backend:8000       # Docker
-NEXTJS_URL=http://frontend:3000       # Docker
+
+# Service URLs (Docker)
+BACKEND_URL=http://backend:8000
+NEXTJS_URL=http://frontend:3000
 ```
-
-## Architecture
-Browser<br>
-│<br>
-├── /api/auth/*  →  Next.js (Better Auth)  →  auth.db<br>
-│<br>
-├── /api/passkey/*  →  Next.js (WebAuthn)  →  auth.db<br>
-│<br>
-└── /api/todos  →  Next.js proxy<br>
-│<br>
-└── Bearer token  →  FastAPI :8000<br>
-│<br>
-├── sign token (HMAC-SHA256)<br>
-├── GET /api/auth/get-session<br>
-└── todos.db<br>
-
-## JWT Integration Decision
-
-Better Auth uses opaque session tokens (not JWTs). Each token is a 32-char random string signed with HMAC-SHA256 and stored as an HttpOnly cookie.
-
-**Flow:**
-1. User logs in → Better Auth creates session in `auth.db`
-2. Session cookie set: `better-auth.session_token={token}.{HMAC signature}`
-3. Next.js proxy reads cookie server-side via `auth.api.getSession()`
-4. Raw token forwarded to FastAPI as `Authorization: Bearer {token}`
-5. FastAPI reconstructs signed cookie using shared `BETTER_AUTH_SECRET`
-6. FastAPI calls `GET /api/auth/get-session` to validate
-7. Returns user object → used for per-user data isolation
-
-**Tradeoffs:**
-- ✅ Session revocable server-side instantly
-- ✅ No JWT library needed on Python side
-- ❌ FastAPI makes HTTP call to Next.js on every request (latency)
-- ❌ Both services must be running simultaneously
-
-**For production at scale:** Switch to PostgreSQL + Redis session cache, use Better Auth JWT plugin to issue short-lived JWTs, eliminating per-request validation calls.
-
-## Passkey Note
-
-Better Auth v1.6.11 does not include a passkey plugin. WebAuthn implemented manually using `@simplewebauthn/server` and `@simplewebauthn/browser`.
-EOF
 
 ## How to Get Environment Values
 
 ### BETTER_AUTH_SECRET
-Generate random secret:
 ```bash
 openssl rand -base64 32
 ```
 
 ### GOOGLE_CLIENT_ID & GOOGLE_CLIENT_SECRET
-1. Buka https://console.cloud.google.com
-2. Buat project → APIs & Services → Credentials
+1. Open https://console.cloud.google.com
+2. Create project → APIs & Services → Credentials
 3. Create Credentials → OAuth 2.0 Client ID
 4. Application type: **Web application**
-5. Authorized redirect URIs: `http://localhost:3000/api/auth/callback/google`
-6. Copy Client ID dan Client Secret
+5. Authorized redirect URIs:
+   - `http://localhost:3000/api/auth/callback/google`
+6. Copy Client ID and Client Secret
 
 ### BACKEND_URL & NEXTJS_URL
-- **Local dev**: `BACKEND_URL=http://localhost:8000`, tidak perlu `NEXTJS_URL`
+- **Local dev**: `BACKEND_URL=http://localhost:8000`
 - **Docker**: `BACKEND_URL=http://backend:8000`, `NEXTJS_URL=http://frontend:3000`
-EOF
+
+## Architecture
+
+```
+Browser
+   │
+   ├── GET /api/auth/token (Next.js)
+   │      │
+   │      ├── auth.api.getSession() ──→ auth.db (Better Auth)
+   │      └── POST /auth/token ──→ FastAPI
+   │                                    └── generate JWT (HS256, 1h)
+   │
+   ├── GET/POST /api/auth/* (Better Auth)
+   │      └── auth.db (user, session, account, verification)
+   │
+   ├── POST /api/passkey/* (WebAuthn — manual implementation)
+   │      └── auth.db (passkey, passkey_challenge)
+   │
+   └── Bearer JWT ──→ FastAPI :8000
+                          │
+                          ├── verify JWT locally (no HTTP call)
+                          └── todos.db (per-user data isolation)
+```
+
+## JWT Integration Decision
+
+Better Auth uses opaque session tokens internally, not JWTs. To enable stateless
+JWT validation in FastAPI, we implemented a JWT exchange flow:
+
+**Flow:**
+1. User logs in → Better Auth creates session in `auth.db`
+2. Frontend requests JWT from `GET /api/auth/token` (Next.js proxy)
+3. Next.js reads session server-side via `auth.api.getSession()`
+4. Next.js sends session token to `POST /auth/token` (FastAPI)
+5. FastAPI validates session token against Better Auth
+6. FastAPI generates and returns JWT (HS256, 1 hour expiry)
+7. Frontend caches JWT in memory, auto-refreshes when near expiry
+8. All FastAPI requests validated locally — no HTTP calls needed
+
+**Tradeoffs:**
+- ✅ FastAPI validates JWT locally — no HTTP call per request
+- ✅ Stateless — FastAPI scales independently
+- ✅ JWT generated by backend — single source of truth
+- ✅ Standard JWT format — easy to integrate with other services
+- ❌ Token cannot be revoked before 1 hour expiry
+- ❌ Initial JWT exchange requires call to Next.js + FastAPI
+
+**For production at scale:**
+- Add refresh token rotation with Redis blacklist
+- Switch to asymmetric keys (RS256) — FastAPI only needs public key
+- PostgreSQL instead of SQLite
+- Redis session cache to eliminate Better Auth DB lookups
+
+## Passkey Note
+
+Better Auth v1.6.11 does not include a passkey plugin. WebAuthn implemented
+manually using `@simplewebauthn/server` (backend) and `@simplewebauthn/browser` (frontend).
+
+Key insight: Better Auth signs session cookies using HMAC-SHA256 with `btoa()` encoding
+and `encodeURIComponent()`. Session tokens use alphanumeric 32-char format, not UUID.
+
+## Brevo Email
+
+Sender domain: configured via Brevo free tier for transactional email.
+Note: Google OAuth flow does not require transactional email. Brevo is configured
+for future magic link / email verification features.
+
+## Deployment Note
+
+For cloud deployment:
+- **Frontend**: Vercel (free tier)
+- **Backend**: Railway or Render
+- **Database**: Migrate from SQLite to Turso (cloud SQLite) or Neon (PostgreSQL)
+  — SQLite is not compatible with serverless/ephemeral filesystems
+
+Docker Compose is available for local setup:
+```bash
+docker-compose up
+```
