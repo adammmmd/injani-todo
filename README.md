@@ -76,11 +76,6 @@ Better Auth uses opaque session tokens (not JWTs). Each token is a 32-char rando
 
 **For production at scale:** Switch to PostgreSQL + Redis session cache, use Better Auth JWT plugin to issue short-lived JWTs, eliminating per-request validation calls.
 
-## Brevo Email
-
-Sender domain: `muhammadam90@gmail.com` configured via Brevo free tier.
-Note: Google OAuth flow does not require transactional email. Brevo is configured for future magic link / email verification features.
-
 ## Passkey Note
 
 Better Auth v1.6.11 does not include a passkey plugin. WebAuthn implemented manually using `@simplewebauthn/server` and `@simplewebauthn/browser`.
