@@ -26,7 +26,6 @@ coverage.xml
 # Type checking
 .mypy_cache/
 .pyre/
-*.db
 
 # IDEs and Editors
 .vscode/
