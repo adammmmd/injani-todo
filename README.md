@@ -41,16 +41,16 @@ NEXTJS_URL=http://frontend:3000       # Docker
 ```
 
 ## Architecture
-Browser
-│
+Browser<br>
+│<br>
 ├── /api/auth/*  →  Next.js (Better Auth)  →  auth.db<br>
-│
+│<br>
 ├── /api/passkey/*  →  Next.js (WebAuthn)  →  auth.db<br>
-│
+│<br>
 └── /api/todos  →  Next.js proxy<br>
-│
+│<br>
 └── Bearer token  →  FastAPI :8000<br>
-│
+│<br>
 ├── sign token (HMAC-SHA256)<br>
 ├── GET /api/auth/get-session<br>
 └── todos.db<br>
