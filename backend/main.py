@@ -39,11 +39,6 @@ def health():
 
 @app.post("/auth/token")
 async def get_token(request: Request):
-    """
-    Terima session token dari Next.js,
-    validasi ke Better Auth,
-    return JWT.
-    """
     body = await request.json()
     session_token = body.get("sessionToken")
 
@@ -53,7 +48,6 @@ async def get_token(request: Request):
     secret = os.getenv("BETTER_AUTH_SECRET", "")
     nextjs_url = os.getenv("NEXTJS_URL", "http://localhost:3000")
 
-    # reconstruct signed cookie
     import hmac, hashlib, base64
     from urllib.parse import quote
 
@@ -63,11 +57,14 @@ async def get_token(request: Request):
     base64_sig = base64.b64encode(sig).decode()
     signed = quote(f"{session_token}.{base64_sig}", safe="")
 
-    # validasi ke Better Auth
+    # pakai __Secure- prefix untuk production (HTTPS)
+    is_production = nextjs_url.startswith("https")
+    cookie_name = "__Secure-better-auth.session_token" if is_production else "better-auth.session_token"
+
     async with httpx.AsyncClient() as client:
         response = await client.get(
             f"{nextjs_url}/api/auth/get-session",
-            headers={"Cookie": f"better-auth.session_token={signed}"}
+            headers={"Cookie": f"{cookie_name}={signed}"}
         )
 
     if response.status_code != 200:
@@ -79,7 +76,6 @@ async def get_token(request: Request):
 
     user = data["user"]
 
-    # generate JWT
     token = jwt.encode(
         {
             "userId": user["id"],
