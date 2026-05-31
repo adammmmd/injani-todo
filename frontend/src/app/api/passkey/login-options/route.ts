@@ -1,23 +1,26 @@
 import { generateAuthenticationOptions } from "@simplewebauthn/server";
-import Database from "better-sqlite3";
 import { NextRequest } from "next/server";
 import { randomUUID } from "crypto";
-import path from "path";
+import { dbRun, isProduction } from "@/lib/db";
 
-const db = new Database(path.join(process.cwd(), "auth.db"));
+const RPID = process.env.NEXT_PUBLIC_APP_URL
+  ? new URL(process.env.NEXT_PUBLIC_APP_URL).hostname
+  : "localhost";
 
 export async function POST(req: NextRequest) {
   const options = await generateAuthenticationOptions({
-    rpID: "localhost",
+    rpID: RPID,
     userVerification: "preferred",
   });
 
   const challengeId = randomUUID();
-  db.prepare(
-    "INSERT INTO passkey_challenge (id, challenge, userId, expiresAt) VALUES (?, ?, ?, ?)"
-  ).run(challengeId, options.challenge, null, Date.now() + 5 * 60 * 1000);
+  await dbRun(
+    "INSERT INTO passkey_challenge (id, challenge, userId, expiresAt) VALUES (?, ?, ?, ?)",
+    [challengeId, options.challenge, null, Date.now() + 5 * 60 * 1000]
+  );
 
   const response = Response.json(options);
-  response.headers.set("Set-Cookie", `passkey_challenge_id=${challengeId}; Path=/; HttpOnly`);
+  const secure = isProduction ? "; Secure" : "";
+  response.headers.set("Set-Cookie", `passkey_challenge_id=${challengeId}; Path=/; HttpOnly${secure}`);
   return response;
 }

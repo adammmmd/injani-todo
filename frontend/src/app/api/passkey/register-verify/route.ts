@@ -1,11 +1,13 @@
 import { auth } from "@/lib/auth";
 import { verifyRegistrationResponse } from "@simplewebauthn/server";
-import Database from "better-sqlite3";
 import { NextRequest } from "next/server";
 import { randomUUID } from "crypto";
-import path from "path";
+import { dbExecute, dbRun, isProduction } from "@/lib/db";
 
-const db = new Database(path.join(process.cwd(), "auth.db"));
+const RPID = process.env.NEXT_PUBLIC_APP_URL
+  ? new URL(process.env.NEXT_PUBLIC_APP_URL).hostname
+  : "localhost";
+const ORIGIN = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
 
 export async function POST(req: NextRequest) {
   const session = await auth.api.getSession({ headers: req.headers });
@@ -20,17 +22,19 @@ export async function POST(req: NextRequest) {
 
   if (!challengeId) return Response.json({ error: "No challenge" }, { status: 400 });
 
-  const challenge = db.prepare(
-    "SELECT * FROM passkey_challenge WHERE id = ? AND userId = ? AND expiresAt > ?"
-  ).get(challengeId, session.user.id, Date.now()) as { challenge: string } | undefined;
+  const challenges = await dbExecute(
+    "SELECT * FROM passkey_challenge WHERE id = ? AND userId = ? AND expiresAt > ?",
+    [challengeId, session.user.id, Date.now()]
+  ) as { challenge: string }[];
 
-  if (!challenge) return Response.json({ error: "Invalid challenge" }, { status: 400 });
+  if (!challenges.length) return Response.json({ error: "Invalid challenge" }, { status: 400 });
+  const challenge = challenges[0];
 
   const verification = await verifyRegistrationResponse({
     response: body,
     expectedChallenge: challenge.challenge,
-    expectedOrigin: "http://localhost:3000",
-    expectedRPID: "localhost",
+    expectedOrigin: ORIGIN,
+    expectedRPID: RPID,
   });
 
   if (!verification.verified || !verification.registrationInfo) {
@@ -39,18 +43,19 @@ export async function POST(req: NextRequest) {
 
   const { credential } = verification.registrationInfo;
 
-  db.prepare(
-    "INSERT INTO passkey (id, credentialID, publicKey, counter, transports, userId, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)"
-  ).run(
-    randomUUID(),
-    credential.id,
-    Buffer.from(credential.publicKey).toString("base64"),
-    credential.counter,
-    JSON.stringify(body.response.transports || []),
-    session.user.id,
-    new Date().toISOString()
+  await dbRun(
+    "INSERT INTO passkey (id, credentialID, publicKey, counter, transports, userId, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    [
+      randomUUID(),
+      credential.id,
+      Buffer.from(credential.publicKey).toString("base64"),
+      credential.counter,
+      JSON.stringify(body.response.transports || []),
+      session.user.id,
+      new Date().toISOString(),
+    ]
   );
 
-  db.prepare("DELETE FROM passkey_challenge WHERE id = ?").run(challengeId);
+  await dbRun("DELETE FROM passkey_challenge WHERE id = ?", [challengeId]);
   return Response.json({ success: true });
 }

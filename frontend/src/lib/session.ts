@@ -1,8 +1,5 @@
-import Database from "better-sqlite3";
-import path from "path";
 import { randomUUID } from "crypto";
-
-const db = new Database(path.join(process.cwd(), "auth.db"));
+import { dbRun, isProduction } from "@/lib/db";
 
 export function generateSessionToken(size = 32): string {
   const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -21,18 +18,14 @@ export async function signSessionToken(token: string, secret: string): Promise<s
   return encodeURIComponent(`${token}.${base64}`);
 }
 
-export function createSession(userId: string): string {
+export async function createSession(userId: string): Promise<string> {
   const token = generateSessionToken(32);
   const now = new Date();
   const expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 
-  db.prepare(
-    "INSERT INTO session (id, token, userId, expiresAt, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?)"
-  ).run(
-    randomUUID(), token, userId,
-    expiresAt.toISOString(),
-    now.toISOString(),
-    now.toISOString()
+  await dbRun(
+    "INSERT INTO session (id, token, userId, expiresAt, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?)",
+    [randomUUID(), token, userId, expiresAt.toISOString(), now.toISOString(), now.toISOString()]
   );
 
   return token;
@@ -40,5 +33,6 @@ export function createSession(userId: string): string {
 
 export async function buildSessionCookie(token: string, secret: string): Promise<string> {
   const signed = await signSessionToken(token, secret);
-  return `better-auth.session_token=${signed}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${7 * 24 * 60 * 60}`;
+  const secure = isProduction ? "; Secure" : "";
+  return `${isProduction ? "__Secure-" : ""}better-auth.session_token=${signed}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${7 * 24 * 60 * 60}${secure}`;
 }
