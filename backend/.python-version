@@ -1,2 +1,1 @@
-echo "3.11" > ~/Desktop/Adam/INJANI/backend/.python-version
-cat ~/Desktop/Adam/INJANI/backend/.python-version
+3.11
