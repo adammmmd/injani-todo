@@ -1,0 +1,4 @@
+echo "3.11" > ~/Desktop/Adam/INJANI/backend/.python-version
+git -C ~/Desktop/Adam/INJANI add backend/.python-version
+git -C ~/Desktop/Adam/INJANI commit -m "add python version file"
+git -C ~/Desktop/Adam/INJANI push
