@@ -15,7 +15,10 @@ const db = new Kysely({
 export const auth = betterAuth({
   database: kyselyAdapter(db, { type: "sqlite" }),
   secret: process.env.BETTER_AUTH_SECRET!,
-  trustedOrigins: ["http://localhost:3000"],
+  trustedOrigins: [
+     "http://localhost:3000",
+     "https://injani-todo.vercel.app",
+   ],
   socialProviders: {
     google: {
       clientId: process.env.GOOGLE_CLIENT_ID!,
